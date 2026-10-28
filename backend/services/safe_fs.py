@@ -27,7 +27,11 @@ def excluded_folders() -> list[Path]:
 
 
 def is_excluded(path: Path) -> bool:
-    return any(path == folder or folder in path.parents for folder in excluded_folders())
+    """True inside this assistant (or any copy of it with the same folder name) or an AGENT_EXCLUDE folder."""
+    path = Path(path).resolve()
+    chain = [path, *path.parents]
+    return any(p.name.casefold() == ROOT.name.casefold() for p in chain) or any(
+        folder in chain for folder in excluded_folders())
 
 
 def is_blocked_name(name: str) -> bool:
@@ -69,7 +73,7 @@ def list_dir(path: str, root: Path) -> list[dict]:
         raise AccessError(f'{path} is not a folder.')
     entries = []
     for item in sorted(folder.iterdir()):
-        if item.name.startswith('.') or is_blocked_name(item.name):
+        if item.name.startswith('.') or is_blocked_name(item.name) or is_excluded(item):
             continue
         try:
             stat = item.stat()

@@ -1,11 +1,12 @@
 """Collect local work evidence for a date range without reading file contents."""
 import os
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from backend.config import ROOT
 from backend.services.activity_gatherer import get_scan_roots
+from backend.services.safe_fs import is_excluded
 
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build",
              ".next", ".pytest_cache", ".idea", ".vscode", "coverage", ".cache"}
@@ -16,14 +17,14 @@ EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".md", ".txt", ".yml
               ".docx", ".xls", ".xlsx", ".csv", ".ppt", ".pptx", ".png", ".jpg", ".jpeg",
               ".svg", ".mp4", ".webm", ".lock"}
 MAX_EVENTS = 3000
+TICKET = re.compile(r"\bASPL-?\d{5,8}\b", re.I)
 
 
 def _roots():
-    candidates = [ROOT, *get_scan_roots()]
     roots = []
-    for path in candidates:
+    for path in get_scan_roots():
         path = Path(path).resolve()
-        if path.exists() and not any(path == old or old in path.parents for old in roots):
+        if path.exists() and not is_excluded(path) and not any(path == old or old in path.parents for old in roots):
             roots = [old for old in roots if path not in old.parents]
             roots.append(path)
     return roots
@@ -34,8 +35,11 @@ def _date(timestamp):
 
 
 def _event(day, kind, title, project, evidence):
+    # Work that already names an ACE ticket (e.g. in its commit message) needs no new one.
+    found = TICKET.search(" ".join([title, *evidence]))
+    ticket = re.sub(r"(?i)^aspl-?", "ASPL-", found[0]) if found else None
     return {"date": day.isoformat(), "kind": kind, "title": title[:240],
-            "repo": project, "evidence": evidence[:8]}
+            "repo": project, "evidence": evidence[:8], "ticket": ticket}
 
 
 def find_ticket_ideas(start, end, roots=None):
@@ -46,8 +50,12 @@ def find_ticket_ideas(start, end, roots=None):
     repos = []
     scanned = 0
     for base in roots:
+        if is_excluded(base):
+            continue
         for root, dirs, files in os.walk(base, topdown=True, followlinks=False):
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
+            # This assistant (and AGENT_EXCLUDE folders) is never the user's work.
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")
+                       and not is_excluded(Path(root, d))]
             here = Path(root)
             project = here.relative_to(base).parts[0] if here != base else base.name
             git_dir = here / ".git"

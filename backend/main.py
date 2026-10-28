@@ -22,13 +22,14 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from backend.app_session import Session, PortalError
 from backend.app_timesheet import Timesheets
 from backend.app_status import StatusScanner, month_status, set_leave
-from backend.app_tasks import TaskCreator, TaskDraft, TaskPlanRequest, check_drafts, load_form, make_task_drafts, option_texts
+from backend.app_tasks import (TaskCreator, TaskDraft, TaskPlanRequest, TicketLinkRequest, TimesheetTicketRequest,
+                               check_drafts, load_form, make_task_drafts, match_new_tickets, option_texts,
+                               ticket_drafts_for_timesheet)
 from backend.config import ROOT, RUNTIME, setting
 from backend.app_rules import is_working_day, today_ist, working_dates
-from backend.app_models import DayPlan, PlanRequest, RangeRequest
-from backend.services.planner import make_plan
+from backend.app_models import DayPlan
 from backend.services.ticket_ideas import find_ticket_ideas
-from backend.services.providers import ProviderError, antigravity_available, transcribe
+from backend.services.providers import ProviderError, transcribe
 from backend.services import agent_drafts, agent_runner
 from backend.services.agent_context import day_context, skip_reason
 from backend.services.agent_drafts import AgentDraft, accept_draft
@@ -101,7 +102,7 @@ async def invalid_request(request: Request, exc: RequestValidationError):
 @app.get('/health')
 async def health():
     return {'status': 'ok', 'today': today_ist().isoformat(), 'saveEnabled': False,
-            'providers': {name: bool(setting(name + '_API_KEY')) for name in ('GEMINI', 'JEV', 'SARVAM')}}
+            'providers': {name: bool(setting(name + '_API_KEY')) for name in ('SARVAM',)}}
 
 
 @app.post('/transcribe')
@@ -149,135 +150,6 @@ async def ticket_ideas(request: TicketIdeaRequest):
     return await asyncio.to_thread(find_ticket_ideas, request.fromDate, request.toDate)
 
 
-@app.post('/plan', response_model=DayPlan)
-async def plan(request: PlanRequest):
-    async with planning_lock:
-        assigned, warning = optional_tickets()
-        return await make_plan(request.transcript, request.date, assigned, warning)
-
-
-@app.post('/plan-stream')
-async def plan_stream(request: PlanRequest):
-    async def event_generator():
-        queue = asyncio.Queue()
-
-        def on_progress(step: str, detail: str | None = None, icon: str | None = None):
-            queue.put_nowait({
-                'type': 'step',
-                'step': step,
-                'detail': detail,
-                'icon': icon or 'info',
-                'time': datetime.now().strftime('%H:%M:%S')
-            })
-
-        async def worker():
-            try:
-                async with planning_lock:
-                    assigned, warning = optional_tickets()
-                    res = await make_plan(request.transcript, request.date, assigned, warning, on_progress=on_progress)
-                    queue.put_nowait({'type': 'result', 'plan': res.model_dump(mode='json')})
-            except Exception as e:
-                queue.put_nowait({'type': 'error', 'message': str(e)})
-            finally:
-                queue.put_nowait(None)
-
-        task = asyncio.create_task(worker())
-        try:
-            while True:
-                item = await queue.get()
-                if item is None:
-                    break
-                yield f"data: {json.dumps(item)}\n\n"
-        finally:
-            await task
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
-@app.post('/plan-range', response_model=list[DayPlan])
-async def plan_range(request: RangeRequest):
-    dates = working_dates(request.fromDate, request.toDate)
-    if not dates:
-        raise HTTPException(422, 'This range contains no working dates.')
-    notes = {day: request.perDay.get(day, request.notes).strip() for day in dates}
-    async with planning_lock:
-        assigned, warning = optional_tickets()
-        plans, reusable = [], {}
-        for day in dates:
-            text = notes[day]
-            if text and text in reusable:
-                from backend.app_rules import workplace
-                payload = reusable[text].model_dump()
-                payload.update(date=day, workplace=workplace(day))
-                result = DayPlan.model_validate(payload)
-            else:
-                result = await make_plan(text, day, assigned, warning)
-                if text:
-                    reusable[text] = result
-            if text and day not in request.perDay:
-                result.warnings.append('Shared notes repeated for this date. Confirm that every task applies to this day.')
-            plans.append(result)
-        return plans
-
-
-@app.post('/plan-range-stream')
-async def plan_range_stream(request: RangeRequest):
-    dates = working_dates(request.fromDate, request.toDate)
-    if not dates:
-        raise HTTPException(422, 'This range contains no working dates.')
-    notes = {day: request.perDay.get(day, request.notes).strip() for day in dates}
-
-    async def event_generator():
-        queue = asyncio.Queue()
-
-        def on_progress(step: str, detail: str | None = None, icon: str | None = None):
-            queue.put_nowait({
-                'type': 'step',
-                'step': step,
-                'detail': detail,
-                'icon': icon or 'info',
-                'time': datetime.now().strftime('%H:%M:%S')
-            })
-
-        async def worker():
-            try:
-                async with planning_lock:
-                    assigned, warning = optional_tickets()
-                    plans, reusable = [], {}
-                    for day in dates:
-                        text = notes[day]
-                        if text and text in reusable:
-                            from backend.app_rules import workplace
-                            payload = reusable[text].model_dump()
-                            payload.update(date=day, workplace=workplace(day))
-                            result = DayPlan.model_validate(payload)
-                            on_progress(f"Reused plan for {day.isoformat()}", "Applied shared notes", "check")
-                        else:
-                            result = await make_plan(text, day, assigned, warning, on_progress=on_progress)
-                            if text:
-                                reusable[text] = result
-                        if text and day not in request.perDay:
-                            result.warnings.append('Shared notes repeated for this date. Confirm that every task applies to this day.')
-                        plans.append(result)
-                    queue.put_nowait({'type': 'result', 'plans': [p.model_dump(mode='json') for p in plans]})
-            except Exception as e:
-                queue.put_nowait({'type': 'error', 'message': str(e)})
-            finally:
-                queue.put_nowait(None)
-
-        task = asyncio.create_task(worker())
-        try:
-            while True:
-                item = await queue.get()
-                if item is None:
-                    break
-                yield f"data: {json.dumps(item)}\n\n"
-        finally:
-            await task
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
 @app.post('/validate')
 async def validate(plans: list[DayPlan]):
     if not plans or len(plans) > 45 or len({p.date for p in plans}) != len(plans):
@@ -309,7 +181,22 @@ async def refresh_task_options():
 @app.post('/tasks/plan')
 async def plan_tasks(request: TaskPlanRequest):
     async with planning_lock:
-        return {'tasks': await make_task_drafts(request.transcript, request.defaults, today_ist())}
+        existing = optional_tickets()[0] if request.checkExisting else ()
+        return {'tasks': await make_task_drafts(request.transcript, request.defaults, today_ist(),
+                                                agent=request.agent, existing=existing)}
+
+
+@app.post('/tasks/from-timesheet')
+async def tasks_from_timesheet(request: TimesheetTicketRequest):
+    known = [t.ticket for t in portal.ticket_cache or []]
+    return {'tasks': ticket_drafts_for_timesheet(request.days, load_form(), today_ist()), 'known': known}
+
+
+@app.post('/tasks/link-tickets')
+async def link_tickets(request: TicketLinkRequest):
+    assigned = await tickets()
+    return {'links': match_new_tickets(request.descriptions, assigned, request.known),
+            'tickets': [t.model_dump() for t in assigned]}
 
 
 @app.post('/tasks/fill')
@@ -318,6 +205,29 @@ async def fill_tasks(drafts: list[TaskDraft]):
         raise HTTPException(422, 'Provide 1–30 tasks.')
     check_drafts(drafts, load_form())
     return await creator.fill(drafts)
+
+
+@app.post('/tasks/create')
+async def create_tasks(drafts: list[TaskDraft]):
+    """Fills, checks and saves each reviewed ticket in ACE (tickets only; timesheets are never saved)."""
+    if not 1 <= len(drafts) <= 30:
+        raise HTTPException(422, 'Provide 1–30 tasks.')
+    check_drafts(drafts, load_form())
+    known = [t.ticket for t in portal.ticket_cache or []]
+    result = await creator.fill(drafts, save=True)
+    missing = [r for r in result['tasks'] if r['status'] in ('saved', 'unconfirmed') and not r.get('ticket')]
+    if missing:
+        # ACE did not show the new number, so find each ticket in the Assigned list by its description.
+        try:
+            assigned = await tickets()
+            links = match_new_tickets([drafts[r['index'] - 1].description for r in missing], assigned, known)
+            for r, ticket in zip(missing, links):
+                if ticket:
+                    r.update(ticket=ticket, status='saved', message=f'Saved in ACE as {ticket}.')
+            result['tickets'] = [t.model_dump() for t in assigned]
+        except PortalError:
+            pass
+    return result
 
 
 MONTH_PATTERN = re.compile(r'^\d{4}-(0[1-9]|1[0-2])$')

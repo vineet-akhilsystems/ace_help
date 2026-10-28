@@ -110,8 +110,7 @@ def test_assistant_project_is_never_reported(monkeypatch, tmp_path):
     (tool / 'backend' / 'main.py').write_text('x', encoding='utf-8')
     (tmp_path / 'proj').mkdir()
     (tmp_path / 'proj' / 'work.md').write_text('x', encoding='utf-8')
-    monkeypatch.setattr(ac, 'excluded_folders', lambda: [tool])
-    paths = [f['path'] for f in ac.scan_project_files(date.today(), tmp_path)]
+    paths =[f['path'] for f in ac.scan_project_files(date.today(), tmp_path)]
     assert all('ace_portal_automation' not in p for p in paths) and any(p.endswith('work.md') for p in paths)
     monkeypatch.setattr(ac, 'read_json', lambda path, default: {})
     monkeypatch.setattr(ac, 'leave_days', lambda: set())
@@ -123,9 +122,12 @@ def test_assistant_project_is_never_reported(monkeypatch, tmp_path):
     assert [c['message'] for c in ac.day_context(date.today(), None, [])['commits']] == ['real work']
 
 
-def test_default_exclusion_is_this_assistant():
+def test_default_exclusion_is_this_assistant(tmp_path):
     from backend.config import ROOT
-    assert ROOT.resolve() in ac.excluded_folders()
+    from backend.services.safe_fs import is_excluded
+    assert is_excluded(ROOT / 'backend' / 'main.py')
+    assert is_excluded(tmp_path / 'old copy' / 'ace_portal_automation' / 'x.py')  # any copy of this tool
+    assert not is_excluded(tmp_path / 'proj' / 'work.md')
 
 
 def test_skip_reason_before_spawning_agent(monkeypatch):

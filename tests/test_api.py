@@ -46,50 +46,10 @@ def test_all_plans_validated_before_browser(monkeypatch):
     fill.assert_not_awaited()
 
 
-def test_range_skips_sundays(monkeypatch):
-    from backend import main
-    from backend.app_rules import workplace
-    async def make(notes, day, tickets, warning):
-        data = plan().model_dump()
-        data.update(date=day, workplace=workplace(day))
-        return main.DayPlan.model_validate(data)
-    monkeypatch.setattr(main, 'optional_tickets', lambda: ([], None))
-    monkeypatch.setattr(main, 'make_plan', make)
-    with TestClient(app) as client:
-        result = client.post('/plan-range', json={'fromDate':'2026-09-25','toDate':'2026-09-28','notes':'Worked on docs'}, headers=HEADERS)
-        assert result.status_code == 200
-        assert [p['date'] for p in result.json()] == ['2026-09-25','2026-09-26','2026-09-28']
-        assert [p['workplace'] for p in result.json()] == ['Home','Office','Office']
-        assert client.post('/plan-range', json={'fromDate':'2026-09-28','toDate':'2026-09-25','notes':'test'}, headers=HEADERS).status_code == 422
-
-
 def test_audio_validation():
     with TestClient(app) as client:
         response = client.post('/transcribe', files={'audio':('recording.txt',b'test','text/plain')}, headers=HEADERS)
         assert response.status_code == 415
-
-
-def test_plan_stream_events(monkeypatch):
-    import json
-    from backend import main
-    async def make(notes, day, tickets, warning, on_progress=None):
-        if on_progress:
-            on_progress("Scanning repositories", "Desktop & workspace", "git")
-            on_progress("Reading commits in patient_vist_summary", "feat: vitals", "commit")
-        return plan()
-
-    monkeypatch.setattr(main, 'optional_tickets', lambda: ([], None))
-    monkeypatch.setattr(main, 'make_plan', make)
-
-    with TestClient(app) as client:
-        res = client.post('/plan-stream', json={'date': '2026-09-16', 'transcript': ''}, headers=HEADERS)
-        assert res.status_code == 200
-        assert 'text/event-stream' in res.headers['content-type']
-        body = res.text
-        assert 'data: ' in body
-        events = [json.loads(line[6:]) for line in body.splitlines() if line.startswith('data: ')]
-        assert any(e.get('type') == 'step' and 'patient_vist_summary' in e.get('step', '') for e in events)
-        assert any(e.get('type') == 'result' and 'plan' in e for e in events)
 
 
 def test_status_endpoints(monkeypatch, tmp_path):

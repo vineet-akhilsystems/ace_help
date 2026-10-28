@@ -19,7 +19,7 @@ export default defineConfig({
   server: {
     port: 5174,
     proxy: Object.fromEntries(
-      ['/health','/status','/plan','/plan-range','/transcribe','/tickets','/ticket-ideas','/task-options','/tasks','/validate','/fill','/screenshots','/agent'].map(endpoint => [
+      ['/health','/status','/transcribe','/tickets','/ticket-ideas','/task-options','/tasks','/validate','/fill','/screenshots','/agent'].map(endpoint => [
         endpoint,
         {
           target: getBackendTarget(),

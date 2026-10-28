@@ -40,34 +40,6 @@ class DayPlan(StrictModel):
         return self
 
 
-class PlanRequest(StrictModel):
-    transcript: str = Field(default='', max_length=20000)
-    date: Date
-
-
-class RangeRequest(StrictModel):
-    fromDate: Date
-    toDate: Date
-    notes: str = Field(default='', max_length=20000)
-    perDay: dict[Date, str] = Field(default_factory=dict)
-
-    @model_validator(mode='after')
-    def check_range(self):
-        if not 0 <= (self.toDate - self.fromDate).days <= 62:
-            raise ValueError('Date range must be ordered and at most 63 calendar days.')
-        return self
-
-
-class Segment(StrictModel):
-    source: str = Field(min_length=1, max_length=20000)
-    description: str = Field(min_length=1, max_length=500)
-    durationMinutes: int | None = Field(default=None, strict=True, ge=1, le=585)
-
-
-class Segments(StrictModel):
-    tasks: list[Segment] = Field(min_length=1, max_length=40)
-
-
 class Ticket(StrictModel):
     ticket: str = Field(pattern=r'^ASPL-\d{5,8}$')
     description: str

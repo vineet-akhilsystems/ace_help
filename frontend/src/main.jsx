@@ -1,6 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {total, validation, tagTask, adjustLongDay} from './plan';
+import {total, validation, tagTask, adjustLongDay, ticketlessRows, applyTicketLinks} from './plan';
 import {api, streamEvents} from './api';
 import {agentPayload, mergeIncomingDraft, newDrafts, readStored, writeStored} from './agent';
 import {TaskApp} from './tasks';
@@ -8,14 +8,7 @@ import {Dashboard} from './dashboard';
 import {TicketIdeas} from './ticket-ideas';
 import './style.css';
 
-async function streamPlan(path, payload, onStep) {
-  const result = await streamEvents(path, payload, onStep, 'Failed to start planning stream.');
-  const plan = result?.plan || result?.plans;
-  if (!plan) throw new Error('Planning ended without generating tasks. Please try again.');
-  return plan;
-}
-
-function App({modeSwitch, jump}) {
+function App({modeSwitch, jump, linked, onCreateTickets}) {
   const [date, setDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [range, setRange] = useState(false);
@@ -44,6 +37,7 @@ function App({modeSwitch, jump}) {
   const [skipped, setSkipped] = useState([]);
   const [agentRunning, setAgentRunning] = useState(false);
   const [draftNotice, setDraftNotice] = useState(null);
+  const [linkNotice, setLinkNotice] = useState('');
   const recorder = useRef(null), recordingTimer = useRef(null), streams = useRef(null), streamFeedRef = useRef(null);
   const pendingDraft = useRef(null);
   useEffect(() => {
@@ -72,9 +66,21 @@ function App({modeSwitch, jump}) {
     const waiting = pendingDraft.current;
     pendingDraft.current = null;
     setPlans(waiting && !range && waiting.date === date ? [waiting] : []);
-    setResults(null); setFillAttempted(false); setStreamSteps([]); setEdited({}); setNoWork([]);
+    setResults(null); setFillAttempted(false); setStreamSteps([]); setEdited({}); setNoWork([]); setLinkNotice('');
   }, [date, toDate, range]);
   useEffect(() => {writeStored('ace.agent', agent);}, [agent]);
+  // Tickets saved in ACE from the Create tasks tab come back here and tag their timesheet rows.
+  useEffect(() => {
+    if (!linked) return;
+    if (linked.tickets?.length) setTickets(linked.tickets);
+    const wanted = linked.links.filter(l => l.ticket).length;
+    if (!wanted) return;
+    const {plans:next, applied} = applyTicketLinks(plans, linked.links);
+    setPlans(next);
+    setEdited(e => ({...e, ...Object.fromEntries(linked.links.filter(l => l.ticket).map(l => [l.date, true]))}));
+    setLinkNotice(applied === wanted ? `Tagged ${applied} ${applied===1?'task':'tasks'} with your new tickets. Review and fill.`
+      : `Tagged ${applied} of ${wanted} tasks; the others are no longer in this review. Open their dates and tag them from the Ticket list.`);
+  }, [linked]);
   // Drafts can also arrive from chat ("fill my ACE for …"); pick them up without overwriting edits.
   useEffect(() => {
     if (busy || isStreamingPlan || fillAttempted || recording) return;
@@ -128,6 +134,8 @@ function App({modeSwitch, jump}) {
     return () => {active = false; clearInterval(timer);};
   }, [results, savedDays, busy]);
   const issues = validation(plans);
+  const untagged = ticketlessRows(plans);
+  const untaggedCount = untagged.reduce((n, d) => n + d.tasks.length, 0);
   const adjustableDays = plans.filter(p => adjustLongDay(p) !== p);
   const days = [];
   if (range && date && toDate) {
@@ -140,31 +148,6 @@ function App({modeSwitch, jump}) {
   async function work(label, fn) {
     setBusy(label); setError('');
     try {await fn();} catch(e) {setError(e.message);} finally {setBusy('');}
-  }
-  async function buildPlan() {
-    setStreamSteps([]);
-    setIsStreamingPlan(true);
-    setBusy('Analyzing system activity…');
-    setError('');
-    const streamPath = range ? '/plan-range-stream' : '/plan-stream';
-    const payload = range
-      ? {fromDate:date, toDate, notes:perDayMode ? '' : notes, perDay:perDayMode ? perDay : {}}
-      : {date, transcript:notes};
-
-    try {
-      const result = await streamPlan(streamPath, payload, step => {
-        setStreamSteps(prev => [...prev, step]);
-        setBusy(step.step);
-      });
-      setPlans(Array.isArray(result) ? result : [result]);
-      setEdited({});
-      setResults(null);
-    } catch(e) {
-      setError(e.message);
-    } finally {
-      setIsStreamingPlan(false);
-      setBusy('');
-    }
   }
   function inView(day) {
     return range ? day >= date && day <= toDate : day === date;
@@ -333,17 +316,10 @@ function App({modeSwitch, jump}) {
               <button className="ghost" disabled={locked || ticketLoading} onClick={loadTickets} title="Refresh your assigned tickets from ACE">
                 {ticketLoading?'Loading tickets from ACE…':tickets.length?`Tickets loaded (${tickets.length}) · Refresh`:'Retry loading tickets'}
               </button>
-              <button
-                className="primary"
-                disabled={locked || ticketLoading || !date || invalidRange || (perDayMode&&range && days.some(d=>!perDay[d]?.trim()))}
-                onClick={buildPlan}
-              >
-                {isStreamingPlan && !agentRunning?'Planning in progress…':'Create my plan'} <span>↗</span>
-              </button>
             </div>
           </div>
           <div className="plan-action agent-action">
-            <span>Or let your coding agent read your notes, commits and files</span>
+            <span>Your coding agent reads your notes, commits and files</span>
             <div className="plan-buttons">
               <select aria-label="Agent" value={agent} disabled={locked || !agents.length} onChange={e=>setAgent(e.target.value)}>
                 {!agents.length && <option value="">No agent set up</option>}
@@ -410,7 +386,7 @@ function App({modeSwitch, jump}) {
           <div className="standby panel">
             <div className="standby-icon">📋</div>
             <h3>Ready to plan your timesheet</h3>
-            <p>Pick a date on the left and click <b>Create my plan</b>. You can leave notes completely empty — the assistant will automatically scan your machine for git commits, touched files, and newly created folders for that day.</p>
+            <p>Pick a date on the left and click <b>Draft with agent</b>. You can leave notes completely empty — your agent reads your commits, changed files and daily notes for that day.</p>
             <div className="standby-tips">
               <span className="tip-badge">Pro-tip</span>
               <small>Tasks are formatted with ticket IDs and contiguous time intervals totaling 9h to under 9h 30m.</small>
@@ -518,6 +494,14 @@ function App({modeSwitch, jump}) {
               setConfirmed(false);
             }}>Adjust {adjustableDays.length} overlong {adjustableDays.length===1?'day':'days'} to 9h 15m</button>}
 
+            {untaggedCount > 0 && !fillAttempted && (
+              <div className="draft-notice panel ticket-gap">
+                <span><b>{untaggedCount} {untaggedCount===1?'task has':'tasks have'} no ticket.</b> Create a ticket for each, assigned to you, so every ACE row has a reason.</span>
+                <button className="primary" disabled={!!busy} onClick={() => onCreateTickets(untagged)}>Create tickets ↗</button>
+              </div>
+            )}
+            {linkNotice && <p className="hint">{linkNotice}</p>}
+
             <div className="fill-bar panel">
               <div>
                 <label className="check">
@@ -596,6 +580,8 @@ function Root() {
   const [mode, setMode] = useState('dashboard');
   const [jump, setJump] = useState(null);
   const [ideaNotes, setIdeaNotes] = useState(null);
+  const [ticketJob, setTicketJob] = useState(null);
+  const [linked, setLinked] = useState(null);
   // All screens stay mounted so switching never discards a plan or an open fill.
   const modeSwitch = <div className="switch mode-switch" role="tablist" aria-label="Workspace">
     {MODES.map(([key, label]) => <button key={key} role="tab" aria-selected={mode===key}
@@ -603,11 +589,13 @@ function Root() {
   </div>;
   const fillDay = date => {setJump({date, at: Date.now()}); setMode('timesheet');};
   const draftIdeas = notes => {setIdeaNotes({notes, at: Date.now()}); setMode('tasks');};
+  const createTickets = rows => {setTicketJob({rows, at: Date.now()}); setMode('tasks');};
+  const ticketsLinked = (result, back) => {setLinked({...result, at: Date.now()}); if (back) setMode('timesheet');};
   return <>
     <div hidden={mode!=='dashboard'}><Dashboard modeSwitch={modeSwitch} onFillDay={fillDay}/></div>
-    <div hidden={mode!=='timesheet'}><App modeSwitch={modeSwitch} jump={jump}/></div>
+    <div hidden={mode!=='timesheet'}><App modeSwitch={modeSwitch} jump={jump} linked={linked} onCreateTickets={createTickets}/></div>
     <div hidden={mode!=='ideas'}><TicketIdeas modeSwitch={modeSwitch} onDraft={draftIdeas}/></div>
-    <div hidden={mode!=='tasks'}><TaskApp modeSwitch={modeSwitch} ideaNotes={ideaNotes}/></div>
+    <div hidden={mode!=='tasks'}><TaskApp modeSwitch={modeSwitch} ideaNotes={ideaNotes} ticketJob={ticketJob} onLinked={ticketsLinked}/></div>
   </>;
 }
 

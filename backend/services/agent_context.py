@@ -7,7 +7,7 @@ from backend.app_rules import is_working_day, workplace
 from backend.app_status import CACHE, leave_days, read_json
 from backend.config import setting
 from backend.services.activity_gatherer import scan_git_activity
-from backend.services.safe_fs import AccessError, _git, excluded_folders, git_log, is_blocked_name, scan_root
+from backend.services.safe_fs import AccessError, _git, git_log, is_blocked_name, is_excluded, scan_root
 from backend.services.user_tickets import load_user_tickets, rank_for_day
 
 NOTE_NAME = re.compile(r'^(\d{1,2})[-_.](\d{1,2})[-_.](\d{2}|\d{4})$')
@@ -41,10 +41,9 @@ def find_daily_note(day: date, folder: Path) -> str | None:
 
 def scan_project_files(day: date, root: Path, limit: int = 300) -> list[dict]:
     found = []
-    skip = excluded_folders()
     for current, dirs, files in os.walk(root, topdown=True, followlinks=False):
         dirs[:] = [d for d in dirs if not d.startswith('.') and not is_blocked_name(d)
-                   and Path(current, d).resolve() not in skip]
+                   and not is_excluded(Path(current, d))]
         base = Path(current)
         for name, kind in [(d, 'folder') for d in dirs] + [(f, 'file') for f in files]:
             if name.startswith('.') or is_blocked_name(name):
@@ -62,8 +61,7 @@ def scan_project_files(day: date, root: Path, limit: int = 300) -> list[dict]:
 
 
 def _excluded(path: Path) -> bool:
-    path = path.resolve()
-    return any(path == folder or folder in path.parents for folder in excluded_folders())
+    return is_excluded(path)
 
 
 def is_me(author: str) -> bool:

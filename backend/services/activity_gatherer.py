@@ -2,7 +2,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from backend.services.safe_fs import _git
+from backend.services.safe_fs import _git, is_excluded
 
 
 def get_scan_roots() -> list[Path]:
@@ -12,9 +12,8 @@ def get_scan_roots() -> list[Path]:
     desktop = user_home / 'Desktop'
     downloads = user_home / 'Downloads'
     akhil = desktop / 'akhil_system'
-    workspace = Path('D:/ace_portal_automation')
 
-    for p in [akhil, desktop, downloads, workspace]:
+    for p in [akhil, desktop, downloads]:
         if p.exists() and p not in roots:
             roots.append(p)
     return roots
@@ -41,14 +40,15 @@ def scan_git_activity(target_date: str, scan_roots: list[Path] | None = None, on
     skip_dirs = {'node_modules', '.venv', 'venv', '__pycache__', 'dist', 'build', '.next'}
 
     for root_dir in scan_roots:
-        if not root_dir.exists():
+        if not root_dir.exists() or is_excluded(root_dir):
             continue
         try:
             for root, dirs, _ in os.walk(root_dir, topdown=True, followlinks=False):
                 if '.git' in dirs:
                     git_repos.append(Path(root))
                     dirs.remove('.git')
-                dirs[:] = [d for d in dirs if d not in skip_dirs]
+                # This assistant's own repo is never the user's work: don't even read its history.
+                dirs[:] = [d for d in dirs if d not in skip_dirs and not is_excluded(Path(root, d))]
         except (OSError, PermissionError):
             pass
 
@@ -150,7 +150,7 @@ def scan_file_activity(target_date: str, on_progress=None) -> dict:
             continue
         try:
             for item in base.glob('*'):
-                if item.name in skip_names or item.name.startswith('.'):
+                if item.name in skip_names or item.name.startswith('.') or is_excluded(item):
                     continue
                 try:
                     stat = item.stat()

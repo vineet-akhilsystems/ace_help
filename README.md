@@ -1,6 +1,6 @@
 # ACE Timesheet Assistant
 
-Local voice and text planner for the ACE daily task report. It creates editable day plans and fills rows in a visible Chromium window. It never clicks Save or updates tickets. Review and save each draft in ACE yourself.
+Local voice and text planner for the ACE daily task report. It creates editable day plans and fills rows in a visible Chromium window. It never saves a timesheet: review and save each day in ACE yourself. New ACE tickets are saved only when you tick them and choose **Create selected in ACE**.
 
 ## Run on Windows
 
@@ -12,15 +12,31 @@ From `D:\ace_portal_automation`, run:
 
 Then open <http://127.0.0.1:8765>. Keep the terminal and all ACE draft tabs open until you have reviewed and saved each day. The launcher installs Python and frontend dependencies and Playwright Chromium on the first run. The existing `.env` is read on the backend; `ACE_USERNAME`/`ACE_PASSWORD` or the legacy `USERNAME`/`PASSWORD` names work. See `.env.example` for all settings.
 
-Describe a day or record a short voice clip, create a plan, adjust descriptions/tickets/times, check the review box, and choose **Fill in ACE**. For a range, shared notes repeat on each weekday; choose separate notes when work differed by day. The app opens one ACE tab per filled date so navigating to the next day does not replace an unsaved draft. Existing populated grid rows cause that date to be skipped.
+Describe a day or record a short voice clip, choose **Draft with agent** (see below), adjust descriptions/tickets/times, check the review box, and choose **Fill in ACE**. For a range, shared notes repeat on each weekday; choose separate notes when work differed by day. The app opens one ACE tab per filled date so navigating to the next day does not replace an unsaved draft. Existing populated grid rows cause that date to be skipped.
 
 ## Create tasks (ACE New Task)
 
-Switch to **Create tasks** in the header. Type or speak one or more tickets; the assistant uses only your text or voice (no git or file scan). **Draft tasks** turns them into ACE New Task drafts matched to the exact ACE Task Type, Priority, Client, Module, FRD Nature and Status names. Set defaults for anything you usually leave unsaid. Edit every field, tick the review box and choose **Fill in ACE**: each task opens in its own ACE tab, is filled and verified, and has you (`ACE_ASSIGNEE`, default `Vineet Kukreti`) ticked in **Assign To : Employee**. The app never clicks **Save & Leave Open**; do that yourself in each tab. **Refresh from ACE** re-reads the option lists into `runtime/ace_task_form.json`.
+Switch to **Create tasks** in the header. Type or speak one or more tickets; the assistant uses only your text or voice (no git or file scan). **Draft tasks** turns them into ACE New Task drafts matched to the exact ACE Task Type, Priority, Client, Module, FRD Nature and Status names. Set defaults for anything you usually leave unsaid. Pick the agent that drafts them (Antigravity, Claude Code or Codex). Edit every field, tick the tickets you want (**Select all** / **Select none**), tick the review box and choose **Create N selected in ACE**: each ticket opens in its own ACE tab, is filled and verified, has you (`ACE_ASSIGNEE`, default `Vineet Kukreti`) ticked in **Assign To : Employee**, and is saved with **Save & Leave Open**. The app reads the new `ASPL-` number from ACE, or finds it in your Assigned list. A ticket is never saved twice, even if you retry; if ACE does not confirm a save, the ticket shows **Check this ACE tab**. **Fill only** fills and checks without saving, for when you want to save yourself. **Refresh from ACE** re-reads the option lists into `runtime/ace_task_form.json`.
 
-## Draft with your agent (no Gemini needed)
+## Tickets for work without one
 
-Your own coding agent can investigate a day and write the draft instead of Gemini. It reads your notes, your
+When a reviewed timesheet has rows without a ticket, choose **Create tickets**. The **Create tasks** tab opens with
+one ACE New Task draft per row (New Requirement, Medium, Augastam (New Product), Augastam ai, FRD Medium, Open,
+remarks `.`, the row's text as description, effort from its time, assigned to you). Review and choose **Create
+selected in ACE**: each saved ticket's number goes straight onto its timesheet row. (With **Fill only**, save each
+tab yourself, then **Link saved tickets**.) Then fill the timesheet as usual.
+
+**Ticket ideas** works the same way for any day (today by default): scan, **Select all shown** (items whose commit
+or file already names an `ASPL-` ticket are left out), then **Create tickets**. Your agent groups the activity into
+one ticket per piece of work with the same defaults, and checks your assigned tickets first: work an existing ticket
+already covers shows **Already covered by ASPL-…** and starts unticked. Every ticket from your own work asks **Have
+you completed this?**: *Yes* sets the ACE status to Completed, *Not yet* keeps it Open. Each card shows the day the
+work was done, but the Target Date stays the next working day: ACE rejects a Target Date earlier than now, and records
+the Assigned Date itself as the day you save.
+
+## Draft with your agent
+
+Your own coding agent investigates the day and writes the draft. It reads your notes, your
 `my task updates` note for the day, your own commits and the files you changed under
 `C:\Users\HP\Desktop\akhil_system`, and tags only tickets assigned to or completed by you (from the `ace_mcp`
 reporting database). It never fills ACE.
@@ -57,7 +73,7 @@ after ten seconds and return an error instructing the agent to use existing summ
 
 ## Safety and recovery
 
-- There is no `/save` or ticket-write endpoint. The app does not know whether you later clicked Save in ACE. The local `runtime/audit.jsonl` records draft fill events and explicitly marks them unsubmitted.
+- Timesheets are never saved. The only write is `/tasks/create`, which saves the new tickets you ticked. The local `runtime/audit.jsonl` records every fill (marked unsubmitted) and every ticket save (marked submitted, with ACE's reply).
 - The server checks dates, fixed dropdown values, task descriptions, contiguous times and at least nine hours before browser fill. It checks the ACE grid before adding and verifies each new row against the plan.
 - A retry in the same running process resumes only if the live ACE draft is an exact prefix of the plan. If the browser or process closes after rows were added, inspect ACE and the local audit before rebuilding; unsaved browser drafts can disappear.
 - Assigned tickets are suggestions. The app searches the ACE Assigned view from 2020 through today. If lookup fails or the grid is paginated, the plan remains usable with no-ticket tasks and a warning. Explicit ticket numbers are used only when present in the loaded assigned list.

@@ -314,6 +314,7 @@ input[type=date], input[type=time], select {
   border-top: 1px solid #edf0e9;
   padding-top: 12px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
@@ -331,8 +332,12 @@ input[type=date], input[type=time], select {
 
 .plan-buttons {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   align-items: center;
+  margin-left: auto;
+  min-width: 0;
 }
 
 .ghost {
@@ -1190,7 +1195,7 @@ footer {
   margin-top: 10px;
 }
 
-.agent-action select {
+.plan-buttons select {
   font-size: 11px;
   padding: 9px 10px;
   border: 1px solid var(--line);
@@ -1224,3 +1229,21 @@ footer {
 .agent-action {
   flex-wrap: wrap;
 }
+
+/* Tickets from your own work */
+.done-question { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 8px 10px; border: 1px solid #dce4db; border-radius: 8px; margin: 6px 0; }
+.done-question.bad { border-color: #d9a6a0; }
+.idea-row em.pill { justify-self: start; font-style: normal; }
+.ace-task.unpicked { opacity: .6; }
+.ace-task.unpicked:hover { opacity: .85; }
+.check.pick { display: flex; align-items: center; gap: 10px; margin: 0; }
+.check.pick h3 { margin: 0; }
+.covered { font-size: 12px; color: var(--green); background: #eef2ea; border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+.fill-bar .plan-buttons { margin-left: auto; }
+.pick-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fill-bar .plan-buttons { flex-wrap: nowrap; }
+/* Review column: the ticket list always keeps room; problems scroll inside a small box. */
+.preview .plans-scroll-area { min-height: 300px; }
+.review-issues { flex-shrink: 0; max-height: 132px; overflow-y: auto; margin: 10px 0; }
+.review-issues p { margin: 2px 0; }

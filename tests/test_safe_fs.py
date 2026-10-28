@@ -127,3 +127,14 @@ def test_git_timeout_cannot_hang_on_inherited_output_pipes(monkeypatch, tmp_path
         fs._git(tmp_path, ['show', 'abc1234'])
     assert time.monotonic() - started < 5
     assert processes[0].wait(timeout=2) is not None
+
+
+def test_this_assistant_is_invisible_to_agents(root):
+    tool = root / 'ace_portal_automation'
+    (tool / 'backend').mkdir(parents=True)
+    (tool / 'backend' / 'main.py').write_text('x', encoding='utf-8')
+    assert 'ace_portal_automation' not in [e['name'] for e in fs.list_dir(str(root), root)]
+    for call in (lambda: fs.list_dir(str(tool), root), lambda: fs.read_file(str(tool / 'backend' / 'main.py'), root),
+                 lambda: fs.git_log(str(tool), date.today(), root)):
+        with pytest.raises(fs.AccessError):
+            call()

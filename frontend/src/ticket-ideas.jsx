@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {api} from './api';
+import {ideaNotes} from './plan';
 
 export function TicketIdeas({modeSwitch, onDraft}) {
   const [toDate, setToDate] = useState('');
@@ -14,7 +15,7 @@ export function TicketIdeas({modeSwitch, onDraft}) {
   useEffect(() => {
     api('/health').then(h => {
       setToDate(h.today);
-      setFromDate(h.today.slice(0, 7) + '-01');
+      setFromDate(h.today);
     }).catch(e => setError(e.message));
   }, []);
 
@@ -29,13 +30,12 @@ export function TicketIdeas({modeSwitch, onDraft}) {
 
   const toggle = index => setSelected(current =>
     current.includes(index) ? current.filter(i => i !== index) : [...current, index]);
-  const draft = () => {
-    const notes = selected.slice(0, 30).map(i => {
-      const item = ideas.ideas[i];
-      return item.date + ': ' + item.title + ' (' + item.kind + (item.repo ? ', ' + item.repo : '') + '). Evidence: ' + item.evidence.join(', ') + '.';
-    }).concat(manualNotes.trim() ? [manualNotes.trim()] : []).join('\n').slice(0, 20000);
-    onDraft(notes);
-  };
+  const shown = ideas ? ideas.ideas.map((item, i) => ({item, i})).filter(({item}) =>
+    !query || (item.date + ' ' + item.repo + ' ' + item.title + ' ' + item.evidence.join(' ')).toLowerCase().includes(query.toLowerCase())) : [];
+  const open = shown.filter(({item}) => !item.ticket);
+  // Select all skips work that already names a ticket.
+  const selectAll = () => setSelected(current => [...new Set([...current, ...open.map(({i}) => i)])]);
+  const draft = () => onDraft(ideaNotes(selected.map(i => ideas.ideas[i]), manualNotes));
 
   return <div className="app">
     <header><div className="brand-group">
@@ -66,18 +66,22 @@ export function TicketIdeas({modeSwitch, onDraft}) {
         {ideas.truncated && <p className="warning">Showing the first {ideas.ideas.length} items. Narrow the date range to see more.</p>}
         <input className="idea-search" aria-label="Filter activity" placeholder="Filter by date, project or file" value={query}
           onChange={e => setQuery(e.target.value)}/>
+        <div className="idea-controls">
+          <button className="ghost" disabled={!open.length} onClick={selectAll}>Select all shown ({open.length})</button>
+          <button className="ghost" disabled={!selected.length} onClick={() => setSelected([])}>Clear</button>
+          <small>{selected.length} selected · items that already name a ticket are left out</small>
+        </div>
         <div className="idea-list">
-          {ideas.ideas.map((item, i) => ({item, i})).filter(({item}) =>
-            !query || (item.date + ' ' + item.repo + ' ' + item.title + ' ' + item.evidence.join(' ')).toLowerCase().includes(query.toLowerCase())
-          ).map(({item, i}) => <label className="idea-row" key={i}>
+          {shown.map(({item, i}) => <label className="idea-row" key={i}>
             <input type="checkbox" checked={selected.includes(i)} onChange={() => toggle(i)}/>
-            <span><b>{item.title}</b><small>{item.date} · {item.kind} · {item.evidence.join(' · ')}</small></span>
+            <span><b>{item.title}</b>{item.ticket && <em className="pill">Has ticket {item.ticket}</em>}
+              <small>{item.date} · {item.kind} · {item.evidence.join(' · ')}</small></span>
           </label>)}
         </div>
         <button className="primary" disabled={!selected.length && !manualNotes.trim()} onClick={draft}>
-          Draft tickets from {Math.min(selected.length, 30)} selected ideas
+          Create tickets for {selected.length} selected {selected.length === 1 ? 'item' : 'items'} ↗
         </button>
-        {selected.length > 30 && <small>Draft the first 30 selected ideas, then return for the rest.</small>}
+        <small>Your agent groups these into one ticket per piece of work, each assigned to you. You review every ticket before it goes into ACE.</small>
       </section>}
     </main>
   </div>;

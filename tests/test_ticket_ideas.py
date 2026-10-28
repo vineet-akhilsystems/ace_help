@@ -31,3 +31,21 @@ def test_ticket_ideas_date_range_validation():
         headers = {"X-ACE-Client": "1"}
         assert client.post("/ticket-ideas", json={"fromDate": "2026-09-01", "toDate": "2026-08-01"}, headers=headers).status_code == 422
         assert client.post("/ticket-ideas", json={"fromDate": "2026-01-01", "toDate": "2026-03-01"}, headers=headers).status_code == 422
+
+
+def test_items_that_name_a_ticket_are_marked():
+    from backend.services.ticket_ideas import _event
+    assert _event(date(2026, 10, 28), "commit", "Fix vitals for aspl172905", "emr", ["Commit abc"])["ticket"] == "ASPL-172905"
+    assert _event(date(2026, 10, 28), "file changed", "File changed: notes.md", "emr", ["C:/x/notes.md"])["ticket"] is None
+
+
+def test_this_assistant_is_never_a_ticket_idea(tmp_path):
+    tool = tmp_path / "ace_portal_automation"
+    (tool / "backend").mkdir(parents=True)
+    (tool / "backend" / "main.py").write_text("x", encoding="utf-8")
+    (tmp_path / "billing").mkdir()
+    (tmp_path / "billing" / "invoice.py").write_text("x", encoding="utf-8")
+    result = find_ticket_ideas(date.today(), date.today(), roots=[tmp_path])
+    text = " ".join(item["title"] + " " + " ".join(item["evidence"]) for item in result["ideas"])
+    assert "invoice.py" in text and "ace_portal_automation" not in text
+    assert find_ticket_ideas(date.today(), date.today(), roots=[tool])["ideas"] == []
