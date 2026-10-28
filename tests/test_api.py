@@ -1,0 +1,108 @@
+from unittest.mock import AsyncMock
+from fastapi.testclient import TestClient
+from backend.main import app
+from tests.test_rules import plan
+
+HEADERS = {'X-ACE-Client':'1'}
+
+
+def test_no_save_or_ticket_update_capability():
+    paths = app.openapi()['paths']
+    assert '/save' not in paths and '/ticket/update' not in paths
+
+
+def test_local_only_requests():
+    with TestClient(app) as client:
+        assert client.post('/validate', json=[]).status_code == 403
+        assert client.post('/validate', json=[], headers={**HEADERS,'Origin':'https://attacker.test'}).status_code == 403
+        assert client.post('/validate', json=[], headers={**HEADERS,'Origin':'http://127.0.0.1:8766'}).status_code == 422
+        assert client.post('/validate', json=[], headers={**HEADERS,'Origin':'http://localhost:5175'}).status_code == 422
+        assert client.get('/health', headers={'Host':'attacker.test'}).status_code == 400
+        assert client.get('/health').json()['saveEnabled'] is False
+
+
+def test_dynamic_port_selection():
+    import socket
+    from backend.run import find_available_port, is_port_available
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('127.0.0.1', 0))
+        busy_port = s.getsockname()[1]
+        assert not is_port_available('127.0.0.1', busy_port)
+        next_port = find_available_port('127.0.0.1', busy_port)
+        assert next_port != busy_port
+        assert next_port > busy_port
+
+
+def test_all_plans_validated_before_browser(monkeypatch):
+    from backend.main import portal
+    fill = AsyncMock()
+    monkeypatch.setattr(portal, 'fill', fill)
+    invalid = plan().model_dump(mode='json')
+    invalid['tasks'][0]['end'] = '20:00'
+    with TestClient(app) as client:
+        assert client.post('/fill', json=[plan().model_dump(mode='json'),invalid], headers=HEADERS).status_code == 422
+        assert client.post('/fill', json=[], headers=HEADERS).status_code == 422
+        assert client.post('/fill', json=[plan().model_dump(mode='json')]*2, headers=HEADERS).status_code == 422
+    fill.assert_not_awaited()
+
+
+def test_range_skips_sundays(monkeypatch):
+    from backend import main
+    from backend.app_rules import workplace
+    async def make(notes, day, tickets, warning):
+        data = plan().model_dump()
+        data.update(date=day, workplace=workplace(day))
+        return main.DayPlan.model_validate(data)
+    monkeypatch.setattr(main, 'optional_tickets', lambda: ([], None))
+    monkeypatch.setattr(main, 'make_plan', make)
+    with TestClient(app) as client:
+        result = client.post('/plan-range', json={'fromDate':'2026-09-25','toDate':'2026-09-28','notes':'Worked on docs'}, headers=HEADERS)
+        assert result.status_code == 200
+        assert [p['date'] for p in result.json()] == ['2026-09-25','2026-09-26','2026-09-28']
+        assert [p['workplace'] for p in result.json()] == ['Home','Office','Office']
+        assert client.post('/plan-range', json={'fromDate':'2026-09-28','toDate':'2026-09-25','notes':'test'}, headers=HEADERS).status_code == 422
+
+
+def test_audio_validation():
+    with TestClient(app) as client:
+        response = client.post('/transcribe', files={'audio':('recording.txt',b'test','text/plain')}, headers=HEADERS)
+        assert response.status_code == 415
+
+
+def test_plan_stream_events(monkeypatch):
+    import json
+    from backend import main
+    async def make(notes, day, tickets, warning, on_progress=None):
+        if on_progress:
+            on_progress("Scanning repositories", "Desktop & workspace", "git")
+            on_progress("Reading commits in patient_vist_summary", "feat: vitals", "commit")
+        return plan()
+
+    monkeypatch.setattr(main, 'optional_tickets', lambda: ([], None))
+    monkeypatch.setattr(main, 'make_plan', make)
+
+    with TestClient(app) as client:
+        res = client.post('/plan-stream', json={'date': '2026-09-16', 'transcript': ''}, headers=HEADERS)
+        assert res.status_code == 200
+        assert 'text/event-stream' in res.headers['content-type']
+        body = res.text
+        assert 'data: ' in body
+        events = [json.loads(line[6:]) for line in body.splitlines() if line.startswith('data: ')]
+        assert any(e.get('type') == 'step' and 'patient_vist_summary' in e.get('step', '') for e in events)
+        assert any(e.get('type') == 'result' and 'plan' in e for e in events)
+
+
+def test_status_endpoints(monkeypatch, tmp_path):
+    import backend.app_status as status
+    monkeypatch.setattr(status, 'CACHE', tmp_path / 'cache.json')
+    monkeypatch.setattr(status, 'LEAVE', tmp_path / 'leave.json')
+    monkeypatch.setattr(status, 'read_audit', lambda: {})
+    with TestClient(app) as client:
+        assert client.get('/status?month=2026-09').status_code == 403
+        assert client.get('/status?month=2026-9', headers=HEADERS).status_code == 422
+        assert client.get('/status?month=2999-01', headers=HEADERS).status_code == 422
+        body = client.get('/status?month=2026-09', headers=HEADERS).json()
+        assert len(body['days']) == 30 and body['counts']['unchecked'] == body['workingDays']
+        marked = client.post('/status/leave', json={'day': '2026-09-01', 'leave': True}, headers=HEADERS).json()
+        assert marked['days'][0]['status'] == 'leave' and marked['counts']['leave'] == 1
+        assert client.post('/status/leave', json={'day': '2026-09-06', 'leave': True}, headers=HEADERS).status_code == 422

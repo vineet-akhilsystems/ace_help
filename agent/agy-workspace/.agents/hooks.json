@@ -1,0 +1,16 @@
+{
+  "ace-only": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Users\\HP\\Desktop\\AKHIL_~1\\AIPOCP~1\\ACE_PO~1\\VENV~1\\Scripts\\python.exe ace_only_hook.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+================================================================================
+SAMPLE TIMESHEET NOTES FOR TESTING
+================================================================================
+
+--- OPTION 1: Brief / Natural Speech (Let AI plan & allocate) ---
+Fixed the patient visit summary vitals table bug where lab values were missing. After that, worked on the conversational AI tenant dropdown and demo masters. Also reviewed the Harsh Tyagi report with seniors and attended the CSSD demo meeting.
+
+
+--- OPTION 2: Bullet Points with Tickets ---
+- ASPL-167733: Implemented voice assistant recording bar and header workflow in custom form builder.
+- Resolved patient visit summary frontend issue with vitals API response.
+- Configured Redis lookup and tenant management features in Augastam AI gateway.
+- Conducted clinical decision support demo and shared master schema.
+
+
+--- OPTION 3: Detailed Multi-Task Narrative ---
+Started the day by investigating why lab vitals in the patient visit summary were failing to render despite a 200 OK API response. Patched the frontend component and updated prompt schemas. Next, joined a demonstration meeting for the CSSD clinical decision support system with Mam. In the afternoon, worked on tenant management integration with Redis in augastam_conversational_ai, verified the demo masters, and finalized documentation handover to Nitin Kumar.
+
+
+--- OPTION 4: Empty / Zero Notes (Pure Machine Activity Scan) ---
+(Leave the textarea completely empty and click "Create my plan". The assistant will automatically scan your git commits, touched files, and newly created folders for the chosen date!)

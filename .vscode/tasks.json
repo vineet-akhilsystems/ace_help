@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ACE: Backend (FastAPI :8765)",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "backend.run"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "presentation": { "group": "ace", "panel": "dedicated", "reveal": "always" },
+      "problemMatcher": {
+        "pattern": { "regexp": "^\\s*$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*Started server process.*|.*Will watch.*",
+          "endsPattern": ".*Application startup complete.*|.*Uvicorn running.*"
+        }
+      }
+    },
+    {
+      "label": "ACE: Frontend (Vite :5174)",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev"],
+      "options": { "cwd": "${workspaceFolder}\\frontend" },
+      "isBackground": true,
+      "presentation": { "group": "ace", "panel": "dedicated", "reveal": "always" },
+      "problemMatcher": {
+        "pattern": { "regexp": "^\\s*$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*VITE.*",
+          "endsPattern": ".*Local:.*http.*"
+        }
+      }
+    },
+    {
+      "label": "Start ACE App",
+      "dependsOn": ["ACE: Backend (FastAPI :8765)", "ACE: Frontend (Vite :5174)"],
+      "dependsOrder": "parallel",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}
