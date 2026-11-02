@@ -11,7 +11,7 @@ from backend.config import ROOT, setting
 # Never listed or opened through the agent tools.
 SKIP_DIRS = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', 'runtime', 'dist', 'build', '.next',
              '.pytest_cache'}
-SECRET_FILES = {'storage_state.json'}
+SECRET_FILES = {'storage_state.json'}  # plus every storage_state_*.json (other ACE accounts' logins)
 SECRET_SUFFIXES = ('.pem', '.key', '.pfx', '.p12', '.jks', '.env')
 GIT_READ_TIMEOUT_SECONDS = 10
 
@@ -37,7 +37,7 @@ def is_excluded(path: Path) -> bool:
 def is_blocked_name(name: str) -> bool:
     # Dot-names cover .env*, .git, .claude settings, .npmrc and similar files that often hold tokens.
     lower = name.lower()
-    return (lower.startswith('.') or lower in SKIP_DIRS or lower in SECRET_FILES or lower.endswith(SECRET_SUFFIXES)
+    return (lower.startswith('.') or lower in SKIP_DIRS or lower in SECRET_FILES or (lower.startswith('storage_state_') and lower.endswith('.json')) or lower.endswith(SECRET_SUFFIXES)
             or lower.startswith('id_rsa') or 'credential' in lower)
 
 

@@ -11,5 +11,23 @@ def setting(name: str, default: str = '', legacy: str = '') -> str:
     return os.environ.get(name) or FILE_ENV.get(name) or (FILE_ENV.get(legacy) if legacy else '') or default
 
 
+def save_setting(name: str, value: str, path=ROOT / '.env') -> None:
+    """Sets one NAME=value line in .env (replacing it or adding it) and leaves every other line as it was."""
+    text = path.read_bytes().decode('utf-8') if path.exists() else ''
+    newline = '\r\n' if '\r\n' in text else '\n'
+    lines = text.splitlines()
+    line = f'{name}={value}'
+    found = [i for i, l in enumerate(lines) if l.split('=', 1)[0].strip() == name]
+    if found:
+        lines[found[0]] = line
+    else:
+        lines.append(line)
+    path.write_bytes((newline.join(lines) + newline).encode('utf-8'))
+    if path == ROOT / '.env':
+        FILE_ENV[name] = value
+        if name in os.environ:
+            os.environ[name] = value
+
+
 RUNTIME = ROOT / 'runtime'
 RUNTIME.mkdir(exist_ok=True)

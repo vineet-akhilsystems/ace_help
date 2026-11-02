@@ -52,6 +52,7 @@ class TaskDraft(StrictModel):
     description: str = Field(min_length=1, max_length=4000)
     clientRemarks: str = Field(min_length=1, max_length=4000)
     employeeRemarks: str = Field(min_length=1, max_length=4000)
+    assignTo: str = Field(default='', max_length=120)  # empty: ACE_ASSIGNEE (the user's own tickets)
     source: str | None = None
     warnings: list[str] = Field(default_factory=list)
 
@@ -155,6 +156,8 @@ def check_drafts(drafts, form):
                 setattr(d, field, value)
             if (value or field in REQUIRED) and value not in texts[field]:
                 raise ValueError(f'Task {i}: "{value}" is not an ACE {field} option.')
+        if d.assignTo and form.get('employees') and d.assignTo not in form['employees']:
+            raise ValueError(f'Task {i}: "{d.assignTo}" is not in ACE\'s Assign To list.')
 
 
 def work_day(text, today):
@@ -364,6 +367,9 @@ class TaskCreator:
     def assignee(self):
         return setting('ACE_ASSIGNEE', 'Vineet Kukreti')
 
+    def assignee_for(self, draft):
+        return draft.assignTo or self.assignee
+
     async def open_form(self):
         page = await self.session.open(PATH)
         await page.locator('#' + T + 'btnNewTask').click()
@@ -399,7 +405,7 @@ class TaskCreator:
         wrong = [f for f, v in expected_values(draft).items() if normalize(actual.get(f) or '') != normalize(v)]
         if actual.get('targetDisplay') not in (None, display_date(draft.targetDate)):
             wrong.append('targetDate (visible)')
-        if actual.get('assigned') != [self.assignee]:
+        if actual.get('assigned') != [self.assignee_for(draft)]:
             wrong.append('assignTo')
         return wrong
 
@@ -427,9 +433,9 @@ class TaskCreator:
         boxes = page.locator('input[type=checkbox][id*=chlstEmployee]')
         ids = await boxes.evaluate_all('''(els, name) => els.filter(c =>
             (c.labels?.[0]?.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase() === name.toLowerCase()).map(c => c.id)''',
-            self.assignee)
+            self.assignee_for(draft))
         if len(ids) != 1:
-            raise PortalError(f'Could not find exactly one "{self.assignee}" in Assign To : Employee.')
+            raise PortalError(f'Could not find exactly one "{self.assignee_for(draft)}" in Assign To : Employee.')
         await page.locator('#' + ids[0]).check()
         await settle(page)
 
@@ -458,7 +464,7 @@ class TaskCreator:
         return (re.sub(r'(?i)^aspl-?', 'ASPL-', found[0]) if found else None), message
 
     async def fill_one(self, index, draft, save=False):
-        fingerprint = hashlib.sha256(draft.model_dump_json(exclude={'warnings', 'source'}).encode()).hexdigest()
+        fingerprint = self.draft_key(draft)
         label = {'index': index, 'keyword': draft.keyword}
         if fingerprint in self.saved:
             return {**label, **self.saved[fingerprint], 'message': 'Already saved in ACE; not saved again.'}
@@ -502,11 +508,24 @@ class TaskCreator:
             self.audit(draft, 'task_interrupted', message)
             return {**label, 'status': 'interrupted', 'message': message}
 
-    async def fill(self, drafts, save=False):
+    @staticmethod
+    def draft_key(draft):
+        return hashlib.sha256(draft.model_dump_json(exclude={'warnings', 'source'}).encode()).hexdigest()
+
+    async def fill(self, drafts, save=False, proceed=None, close_saved=False):
+        """proceed(i) is asked before ticket i; False stops there (the tickets before it are finished, never cut off).
+        close_saved closes each tab once ACE confirms its save, for long unattended runs."""
         async with self.session.lock:
-            results = []
+            results, not_started = [], []
             # Each ticket has its own tab, so one that fails is reported and the rest still go through.
             for i, draft in enumerate(drafts, start=1):
+                if proceed and not proceed(i):
+                    not_started = list(range(i, len(drafts) + 1))
+                    break
                 results.append(await self.fill_one(i, draft, save))
-            return {'tasks': results, 'notStarted': [],
+                if close_saved and results[-1]['status'] == 'saved':
+                    page = self.tabs.pop(self.draft_key(draft), None)
+                    if page and not page.is_closed():
+                        await page.close()
+            return {'tasks': results, 'notStarted': not_started,
                     'saved': any(r['status'] == 'saved' for r in results)}

@@ -1,0 +1,51 @@
+{
+  "_about": "Ticket assignment matching cases checked by both tests/test_assign_rules.py and frontend/src/assign.test.js, so the Python and JavaScript rules stay the same. Values come from the real Bug List sheet and ACE lists.",
+  "employees": ["Gaurav Bagouli", "Karan Kumar", "Karan Raj Singh Verma", "Mohammad Asad Khan", "Naman Thapa",
+                "Naveen Shekhar Mishra", "Rahul Kumar", "Rahul Yadav", "Satender Datt Chamoli", "Vineet Kukreti", "Vivek Singh"],
+  "modules": ["Administration", "Appointment", "Augastam - Administration", "Augastam - ATD", "Augastam - Billing",
+              "Augastam - LIS", "Augastam - Registration", "Augastam ai", "Augastam EMR", "Book Appointment Portal",
+              "IP Billing", "OP Billing", "OT", "Registration", "Reports - Billing"],
+  "matchEmployee": [
+    ["Naveen", "Naveen Shekhar Mishra", "auto"],
+    ["naveen", "Naveen Shekhar Mishra", "auto"],
+    ["Vivek", "Vivek Singh", "auto"],
+    ["Asad", "Mohammad Asad Khan", "auto"],
+    ["Karan Verma", "Karan Raj Singh Verma", "auto"],
+    ["Naman", "Naman Thapa", "auto"],
+    ["gaurav bagouli", "Gaurav Bagouli", "exact"],
+    ["Rahul", "", "ask"],
+    ["Satendra sir", "", "ask"],
+    ["Asad/Naman", "", "ask"],
+    ["Nobody Here", "", "ask"]
+  ],
+  "matchModule": [
+    ["Admin", "Augastam - Administration"],
+    ["Augastam - Admin", "Augastam - Administration"],
+    ["Augastam-Admin", "Augastam - Administration"],
+    ["Augastam - Billing", "Augastam - Billing"],
+    ["Billing", "Augastam - Billing"],
+    ["Augstam billing", "Augastam - Billing"],
+    ["Augstam-billing", "Augastam - Billing"],
+    ["Augastam-Billing", "Augastam - Billing"],
+    ["Augastam - Registration", "Augastam - Registration"],
+    ["Augastam-Registration", "Augastam - Registration"],
+    ["Registration", "Augastam - Registration"],
+    ["Augastam - Appointment", "Appointment"],
+    ["Other", ""],
+    ["", ""]
+  ],
+  "fillTemplate": [
+    ["{Description}\nScreenshot: {Screenshot}\n[Assigned by {Assigned By}]",
+     {"Description": "Tab movement broken ", "Screenshot": "https://prnt.sc/x", "Assigned By": "Pooja"},
+     "Tab movement broken\nScreenshot: https://prnt.sc/x\n[Assigned by Pooja]"],
+    ["{Description}\nScreenshot: {Screenshot}\n[Assigned by {Assigned By}]",
+     {"Description": "No link", "Assigned By": "Sneha"},
+     "No link\n[Assigned by Sneha]"]
+  ],
+  "sheetDate": [
+    ["06/11/2026", "2026-11-06T18:00"],
+    ["46332", "2026-11-06T18:00"],
+    ["2026-11-06", "2026-11-06T18:00"],
+    ["", ""]
+  ]
+}

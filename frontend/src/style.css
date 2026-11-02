@@ -1247,3 +1247,38 @@ footer {
 .preview .plans-scroll-area { min-height: 300px; }
 .review-issues { flex-shrink: 0; max-height: 132px; overflow-y: auto; margin: 10px 0; }
 .review-issues p { margin: 2px 0; }
+/* Ticket assignment */
+.assign-switches { display: flex; flex-direction: column; gap: 8px; }
+.assign-switches .check { font-size: 13px; }
+.dash .plans-scroll-area { max-height: 65vh; }
+.map-settings summary { cursor: pointer; list-style: none; }
+.map-settings summary h2 { display: inline; }
+.map-settings h3 { margin-top: 8px; }
+.map-table { display: grid; gap: 6px; }
+.map-head, .map-row { display: grid; grid-template-columns: 170px minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.map-head { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.map-row { padding: 8px 0; border-top: 1px solid #e6ebe4; font-size: 13px; }
+.map-row b { display: flex; flex-direction: column; gap: 2px; }
+.map-row b small { font-weight: 400; color: var(--muted); font-size: 11px; }
+.map-row select, .map-row input, .map-row textarea { padding: 6px 8px; border: 1px solid #cbd3c9; border-radius: 6px; font: inherit; font-size: 13px; }
+.map-row select.bad { border-color: #c0573f; }
+.map-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: start; }
+.map-rule > select { min-width: 190px; }
+.map-inline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.map-inline input { width: 64px; }
+.map-template { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; }
+.map-template textarea { min-height: 64px; }
+.map-example { color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+@media (max-width: 760px) { .map-head { display: none; } .map-row { grid-template-columns: 1fr; } }
+.map-row > input { padding: 6px 8px; border: 1px solid #cbd3c9; border-radius: 6px; font: inherit; font-size: 13px; }
+.map-row .map-example .ghost.small { margin-left: 6px; }
+.map-settings .sheet-link { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
+.map-settings .sheet-link input { flex: 1; min-width: 260px; }
+.auto-switch { font-size: 14px; font-weight: 600; }
+.auto-runs { display: grid; gap: 8px; }
+.auto-run { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid #dce4db; border-radius: 8px; font-size: 13px; }
+.auto-run small { color: var(--muted); overflow-wrap: anywhere; }
+.auto-run .error-text { color: #b0412e; }
+.idea-controls .run-count { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.run-count input { width: 72px; }
+.run-count span { color: var(--muted); font-weight: 400; }

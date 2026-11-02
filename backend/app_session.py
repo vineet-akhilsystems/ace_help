@@ -12,7 +12,9 @@ SLOW_PAGE = 45000  # ms allowed for an ACE document to arrive
 
 
 class Session:
-    def __init__(self):
+    # account names the .env pair (<account>_USERNAME / _PASSWORD); each account keeps its own login cookies.
+    def __init__(self, account='ACE', state='storage_state.json'):
+        self.account, self.state_file = account, RUNTIME / state
         self.lock = asyncio.Lock()
         self.driver = self.browser = self.context = None
         self.reader = self.reader_context = self.background_page = None
@@ -50,7 +52,7 @@ class Session:
             channel=channel or None,
             args=[] if headless else ['--start-maximized']
         )
-        state = RUNTIME / 'storage_state.json'
+        state = self.state_file
         context = await browser.new_context(
             storage_state=str(state) if state.exists() else None,
             timezone_id='Asia/Kolkata', viewport={'width': 1500, 'height': 950})
@@ -67,10 +69,11 @@ class Session:
         return await page.locator('input[type=password]').count() > 0
 
     async def login(self, page):
-        username = setting('ACE_USERNAME', legacy='USERNAME')
-        password = setting('ACE_PASSWORD', legacy='PASSWORD')
+        mine = self.account == 'ACE'
+        username = setting(f'{self.account}_USERNAME', legacy='USERNAME' if mine else '')
+        password = setting(f'{self.account}_PASSWORD', legacy='PASSWORD' if mine else '')
         if not username or not password:
-            raise PortalError('Set ACE_USERNAME and ACE_PASSWORD in .env, or sign in in the opened ACE browser.')
+            raise PortalError(f'Set {self.account}_USERNAME and {self.account}_PASSWORD in .env, or sign in in the opened ACE browser.')
         user_selector = setting('ACE_USERNAME_SELECTOR') or '#txtUserID'
         pass_selector = setting('ACE_PASSWORD_SELECTOR') or '#txtPassword'
         button_selector = setting('ACE_LOGIN_SELECTOR') or '#btnLogin'
@@ -91,7 +94,7 @@ class Session:
                 await button.click()
         if await self.is_login(page):
             raise PortalError('ACE login did not complete. Check credentials or finish login in the browser.')
-        await page.context.storage_state(path=str(RUNTIME / 'storage_state.json'))
+        await page.context.storage_state(path=str(self.state_file))
 
     async def background(self, path):
         # Status checks and ticket reads use one reusable page in a second, headless
