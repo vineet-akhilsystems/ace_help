@@ -47,10 +47,17 @@ class Session:
         channel = setting('ACE_BROWSER_CHANNEL', 'chrome')
         kind = 'hidden reader' if headless else 'browser'
         print(f"[ACE Assistant] [BROWSER] Launching {kind} (channel={channel or 'bundled chromium'})...", flush=True)
+        args = [] if headless else ['--start-maximized']
+        # ACE currently serves HTTP only. New Chrome HTTPS-first defaults block
+        # navigation with ERR_BLOCKED_BY_CLIENT before its login page can load.
+        # Apply the compatibility option only to this app's HTTP ACE sessions.
+        # https://pptr.dev/next/troubleshooting#neterr_blocked_by_client-when-navigating-to-an-http-url-in-chrome
+        if urlparse(self.base).scheme == 'http':
+            args.append('--disable-features=HttpsFirstBalancedModeAutoEnable')
         browser = await self.driver.chromium.launch(
             headless=headless,
             channel=channel or None,
-            args=[] if headless else ['--start-maximized']
+            args=args
         )
         state = self.state_file
         context = await browser.new_context(
