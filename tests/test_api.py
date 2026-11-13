@@ -9,6 +9,7 @@ HEADERS = {'X-ACE-Client':'1'}
 def test_no_save_or_ticket_update_capability():
     paths = app.openapi()['paths']
     assert '/save' not in paths and '/ticket/update' not in paths
+    assert not any(path.startswith('/assign/') for path in paths)
 
 
 def test_local_only_requests():

@@ -25,11 +25,7 @@ from backend.app_status import StatusScanner, month_status, set_leave
 from backend.app_tasks import (TaskCreator, TaskDraft, TaskPlanRequest, TicketLinkRequest, TimesheetTicketRequest,
                                check_drafts, load_form, make_task_drafts, match_new_tickets, option_texts,
                                ticket_drafts_for_timesheet)
-from backend.app_assign import AssignRequest, AssignService, AutoRequest, RunRequest, SheetRequest
-from backend.assign_rules import (SETTINGS_FILE as ASSIGN_SETTINGS_FILE, AssignSettings,
-                                  load_settings as load_assign_settings, save_settings as save_assign_settings)
-from backend.services.excel_online import ExcelOnline
-from backend.config import ROOT, RUNTIME, save_setting, setting
+from backend.config import ROOT, RUNTIME, setting
 from backend.app_rules import is_working_day, today_ist, working_dates
 from backend.app_models import DayPlan
 from backend.services.ticket_ideas import find_ticket_ideas
@@ -44,24 +40,14 @@ portal = Timesheets(session)
 creator = TaskCreator(session)
 scanner = StatusScanner(session, portal)
 planning_lock = asyncio.Lock()
-# Ticket assignment signs in as a separate ACE account so the user's own ACE session is untouched.
-# ACE_ASSIGN_ACCOUNT names the .env pair it signs in with (<name>_USERNAME / <name>_PASSWORD). Its saved login is
-# per username, so switching accounts never reuses the previous account's login.
-ASSIGN_ACCOUNT = setting('ACE_ASSIGN_ACCOUNT', 'ACE_AGENT')
-agent_session = Session(ASSIGN_ACCOUNT, 'storage_state_agent_' + re.sub(r'\W+', '_', setting(f'{ASSIGN_ACCOUNT}_USERNAME')) + '.json')
-assigner = TaskCreator(agent_session)
-assign_service = AssignService(agent_session, assigner, ExcelOnline())
 
 
 @asynccontextmanager
 async def lifespan(app):
-    # The 30-minute ticket assignment run only happens while the app is running.
-    timer = asyncio.create_task(assign_service.loop())
-    yield
-    timer.cancel()
-    await session.close()
-    await agent_session.close()
-    await assign_service.excel.close()
+    try:
+        yield
+    finally:
+        await session.close()
 
 
 app = FastAPI(title='ACE Timesheet Assistant', lifespan=lifespan)
@@ -75,7 +61,7 @@ async def local_requests(request: Request, call_next):
     if origin and not LOCAL_ORIGIN_PATTERN.match(origin):
         return JSONResponse({'detail': 'Only the local application may access this API.'}, status_code=403)
     if (request.method == 'POST' or request.url.path in ('/tickets', '/task-options', '/status')
-            or request.url.path.startswith(('/agent/', '/assign/'))) and request.headers.get('x-ace-client') != '1':
+            or request.url.path.startswith('/agent/')) and request.headers.get('x-ace-client') != '1':
         return JSONResponse({'detail': 'Missing local application request header.'}, status_code=403)
     if int(request.headers.get('content-length', '0')) > 12 * 1024 * 1024:
         return JSONResponse({'detail': 'Request too large.'}, status_code=413)
@@ -245,87 +231,6 @@ async def create_tasks(drafts: list[TaskDraft]):
         except PortalError:
             pass
     return result
-
-
-def assign_account():
-    return {'account': setting(f'{ASSIGN_ACCOUNT}_USERNAME'), 'ready': bool(setting(f'{ASSIGN_ACCOUNT}_PASSWORD')),
-            'sheetUrl': setting('ACE_ASSIGN_SHEET_URL'), 'path': str(assign_service.test_sheet)}
-
-
-def require_assign_account():
-    if not setting(f'{ASSIGN_ACCOUNT}_USERNAME') or not setting(f'{ASSIGN_ACCOUNT}_PASSWORD'):
-        raise HTTPException(422, f'Set {ASSIGN_ACCOUNT}_USERNAME and {ASSIGN_ACCOUNT}_PASSWORD in .env and restart the app.')
-
-
-@app.get('/assign/settings')
-async def get_assign_settings():
-    return {'settings': load_assign_settings().model_dump(), 'saved': ASSIGN_SETTINGS_FILE.exists(), **assign_account()}
-
-
-@app.post('/assign/settings')
-async def post_assign_settings(settings: AssignSettings):
-    save_assign_settings(settings)
-    return {'settings': settings.model_dump(), 'saved': True}
-
-
-@app.post('/assign/sheet')
-async def assign_sheet(request: SheetRequest | None = None):
-    """The bug sheet (the live OneDrive sheet, or the local test copy) as columns and rows."""
-    settings = load_assign_settings()
-    if request and request.source:
-        settings.source = request.source
-    if request and request.sheetTab:
-        settings.sheetTab = request.sheetTab
-    columns, rows = await assign_service.read(settings)
-    return {'columns': [h for _, h in columns], 'rows': rows, 'source': settings.source, **assign_account()}
-
-
-class SheetUrlRequest(BaseModel):
-    url: str = Field(max_length=2000, pattern=r'^https://(onedrive\.live\.com|1drv\.ms|[\w-]+\.sharepoint\.com)/\S*$')
-
-
-@app.post('/assign/sheet-url')
-async def assign_sheet_url(request: SheetUrlRequest):
-    """Saves the sheet link as ACE_ASSIGN_SHEET_URL in .env; no other .env line changes."""
-    save_setting('ACE_ASSIGN_SHEET_URL', request.url)
-    return {'sheetUrl': setting('ACE_ASSIGN_SHEET_URL')}
-
-
-@app.post('/assign/create')
-async def assign_create(request: AssignRequest):
-    """Fills (and with save=True saves) one ticket per sheet row as ASSIGN_ACCOUNT, then writes each new number to its row."""
-    require_assign_account()
-    return await assign_service.create(request)
-
-
-@app.get('/assign/auto')
-async def get_assign_auto():
-    return assign_service.auto_summary()
-
-
-@app.post('/assign/auto')
-async def post_assign_auto(request: AutoRequest):
-    """Switches the 30-minute run on (rows waiting right now are left for the user) or off."""
-    if request.on:
-        require_assign_account()
-    return await assign_service.set_auto(request.on)
-
-
-@app.post('/assign/run-now')
-async def assign_run_now(request: RunRequest):
-    """Starts a run in the background with the saved settings: the first `count` Open rows without a number right now
-    (all when empty), including rows set aside when the timer was switched on. Poll GET /assign/auto for progress;
-    POST /assign/stop ends it."""
-    require_assign_account()
-    if assign_service.running:
-        raise HTTPException(409, 'A run is already going. Stop it or wait for it to finish.')
-    return {'auto': assign_service.start_run(request.count)}
-
-
-@app.post('/assign/stop')
-async def assign_stop():
-    """Stops the run going now after the ticket in progress; numbers of saved tickets are still written to the sheet."""
-    return {'auto': assign_service.stop()}
 
 
 MONTH_PATTERN = re.compile(r'^\d{4}-(0[1-9]|1[0-2])$')

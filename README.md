@@ -1,5 +1,7 @@
 # ACE Timesheet Assistant
 
+This branch omits sheet-based ticket assignment, including its API and background scheduler. Timesheets, ticket ideas and task creation remain available.
+
 Local voice and text planner for the ACE daily task report. It creates editable day plans and fills rows in a visible Chromium window. It never saves a timesheet: review and save each day in ACE yourself. New ACE tickets are saved only when you tick them and choose **Create selected in ACE**.
 
 ## Run on Windows

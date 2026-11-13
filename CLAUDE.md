@@ -50,12 +50,6 @@ reads them with `streamEvents` in `frontend/src/api.js`).
   (`make_task_drafts` → coding agent), deterministic drafts for untagged timesheet rows, filling, verifying every
   field, and saving (`save=True` only via `POST /tasks/create`). `TaskCreator.saved` remembers each saved draft so a
   retry never creates a duplicate ticket. Each ticket is processed independently; one failure doesn't stop the rest.
-- Ticket assignment: `app_assign.py` (`AssignService`: read the bug sheet, create tickets for other people as the
-  `ACE_ASSIGN_ACCOUNT` login with its own `Session`, find numbers in that account's Sent list, ledger, 30-minute
-  timer started in `main.lifespan`), `assign_rules.py` (sheet row → draft; mirrors `frontend/src/assign.js`, both
-  checked against `tests/fixtures/assign_cases.json`), `services/xlsx.py` (stdlib .xlsx reader),
-  `services/excel_online.py` (downloads the OneDrive workbook and types numbers via the Name Box in a hidden Chrome).
-  Settings, ledger and timer state live in `runtime/assign_*.json`.
 - `app_rules.py` — business rules (see below). `app_models.py` — pydantic models (`StrictModel` forbids extra keys).
 - `services/providers.py` — `agent_json(agent, prompt, schema)` gets structured JSON from a local coding agent CLI
   (`agy`, `claude -p --json-schema`, `codex exec --output-schema`) with no tools; Codex is a `.cmd` shim, so its prompt
@@ -69,9 +63,8 @@ reads them with `streamEvents` in `frontend/src/api.js`).
 - `services/ticket_ideas.py` scans local files/commits for a date range; `services/user_tickets.py` reads the user's
   tickets from the sibling `ace_mcp` reporting DB (`ACE_MCP_PATH`), falling back to the scraped Assigned list.
 
-**Frontend (`frontend/src/`)** — React 19 + Vite, no router. `main.jsx` `Root` keeps all five tabs mounted
-(Dashboard, Timesheet `App`, Ticket ideas, Create tasks `TaskApp`, Ticket assignment `TicketAssign` in
-`ticket-assign.jsx`) so switching never loses state; cross-tab flows
+**Frontend (`frontend/src/`)**: React 19 + Vite, no router. `main.jsx` `Root` keeps all four tabs mounted
+(Dashboard, Timesheet `App`, Ticket ideas, Create tasks `TaskApp`) so switching never loses state; cross-tab flows
 pass `{..., at: Date.now()}` props through `Root` (e.g. Timesheet "Create tickets" → `ticketJob` → Create tasks;
 saved tickets → `linked` → Timesheet rows tagged). Pure logic lives in `plan.js` / `agent.js` with vitest tests;
 keep new logic there rather than in components.
@@ -81,12 +74,6 @@ keep new logic there rather than in components.
 - **Timesheets are never saved by the app.** The user saves each day in ACE.
 - **ACE tickets are saved only** for drafts the user reviewed, ticked, and sent with "Create selected in ACE"
   (`/tasks/create`); "Fill only" (`/tasks/fill`) never saves. Every fill/save is appended to `runtime/audit.jsonl`.
-  The one exception, asked for by the user: **Ticket assignment** (`app_assign.py`) also saves on its own in the
-  30-minute run once the user switches it on, and when the user presses Run now. Which sheet statuses get a ticket,
-  and the ACE status each is created with, come only from the tab's Statuses table. The timer never creates rows that
-  were waiting when it was switched on (Run now takes every waiting row and can be stopped between tickets); both hold any row whose module or person it cannot match, give no ticket to a row whose Module, Assign To or Status cell is empty (unless the tab's Empty cells rules say otherwise), and record every ticket in `runtime/assign_ledger.json`
-  so a row never gets a second ticket. Its only write to the bug sheet is the ASPL number into the ticket column,
-  after re-reading that row's description, assignee and status.
 - Ticket defaults for the user's own work: Task Type `New Requirement`, Priority `Medium`, Client
   `Augastam (New Product)`, Module `Augastam ai`, FRD `Medium`, Status `Open` (or `Completed` when the user answers
   "Have you completed this?" yes), Client/Employee Remarks `.`, assignee `ACE_ASSIGNEE` (default `Vineet Kukreti`)
@@ -129,8 +116,7 @@ keep new logic there rather than in components.
 
 - `.env` (gitignored) holds `ACE_USERNAME`/`ACE_PASSWORD`/`ACE_BASE_URL` (legacy `USERNAME`/`PASSWORD`/`BASE_URL`
   still read), `SARVAM_API_KEY`, agent settings (`AGENT_DEFAULT`, `AGENT_*_TIMEOUT_SECONDS`, `AGENT_SCAN_ROOT`,
-  `ACE_MCP_PATH`, `ACE_GIT_AUTHOR`), and for Ticket assignment `ACE_ASSIGN_ACCOUNT` (which `<NAME>_USERNAME`/`_PASSWORD`
-  pair creates the tickets, default `ACE_AGENT`) and `ACE_ASSIGN_SHEET_URL` (the Bug List sheet link). Read settings with `backend.config.setting()`, never `os.environ` directly
+  `ACE_MCP_PATH`, `ACE_GIT_AUTHOR`). Read settings with `backend.config.setting()`, never `os.environ` directly
   (Windows defines `USERNAME` itself).
 - `runtime/` (gitignored) holds all state: login, caches, audit log, screenshots, agent drafts, `port.json`.
 - In the Bash tool, heredoc Python with `\b`, `\n` etc. inside string literals gets mangled; use the Edit tool for

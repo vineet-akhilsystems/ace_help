@@ -6,7 +6,6 @@ import {agentPayload, mergeIncomingDraft, newDrafts, readStored, writeStored} fr
 import {TaskApp} from './tasks';
 import {Dashboard} from './dashboard';
 import {TicketIdeas} from './ticket-ideas';
-import {TicketAssign} from './ticket-assign';
 import './style.css';
 
 function App({modeSwitch, jump, linked, onCreateTickets}) {
@@ -574,7 +573,7 @@ function App({modeSwitch, jump, linked, onCreateTickets}) {
   </div>;
 }
 
-const MODES = [['dashboard','Dashboard'], ['timesheet','Timesheet'], ['ideas','Ticket ideas'], ['tasks','Create tasks'], ['assign','Ticket assignment']];
+const MODES = [['dashboard','Dashboard'], ['timesheet','Timesheet'], ['ideas','Ticket ideas'], ['tasks','Create tasks']];
 
 function Root() {
   // The dashboard is the landing page every time the app opens.
@@ -597,7 +596,6 @@ function Root() {
     <div hidden={mode!=='timesheet'}><App modeSwitch={modeSwitch} jump={jump} linked={linked} onCreateTickets={createTickets}/></div>
     <div hidden={mode!=='ideas'}><TicketIdeas modeSwitch={modeSwitch} onDraft={draftIdeas}/></div>
     <div hidden={mode!=='tasks'}><TaskApp modeSwitch={modeSwitch} ideaNotes={ideaNotes} ticketJob={ticketJob} onLinked={ticketsLinked}/></div>
-    <div hidden={mode!=='assign'}><TicketAssign modeSwitch={modeSwitch}/></div>
   </>;
 }
 
