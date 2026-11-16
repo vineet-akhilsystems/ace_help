@@ -10,6 +10,7 @@ if sys.platform == "win32":
 
 from contextlib import asynccontextmanager
 import json
+import logging
 import re
 from datetime import date, datetime
 from pydantic import BaseModel, Field
@@ -34,12 +35,14 @@ from backend.services import agent_drafts, agent_runner
 from backend.services.agent_context import day_context, skip_reason
 from backend.services.agent_drafts import AgentDraft, accept_draft
 from backend.services.user_tickets import load_user_tickets
+from backend.app_settings import Credentials, login_status, save_credentials
 
 session = Session()
 portal = Timesheets(session)
 creator = TaskCreator(session)
 scanner = StatusScanner(session, portal)
 planning_lock = asyncio.Lock()
+login_restart_required = False
 
 
 @asynccontextmanager
@@ -60,9 +63,13 @@ async def local_requests(request: Request, call_next):
     origin = request.headers.get('origin')
     if origin and not LOCAL_ORIGIN_PATTERN.match(origin):
         return JSONResponse({'detail': 'Only the local application may access this API.'}, status_code=403)
-    if (request.method == 'POST' or request.url.path in ('/tickets', '/task-options', '/status')
+    if (request.method == 'POST' or request.url.path in ('/tickets', '/task-options', '/status', '/settings/credentials')
             or request.url.path.startswith('/agent/')) and request.headers.get('x-ace-client') != '1':
         return JSONResponse({'detail': 'Missing local application request header.'}, status_code=403)
+    if login_restart_required and request.url.path != '/settings/credentials' and (
+            request.method == 'POST' or request.url.path in ('/tickets', '/task-options', '/status')
+            or request.url.path.startswith('/agent/')):
+        return JSONResponse({'detail': 'ACE login saved. Restart the assistant to use it.'}, status_code=409)
     if int(request.headers.get('content-length', '0')) > 12 * 1024 * 1024:
         return JSONResponse({'detail': 'Request too large.'}, status_code=413)
     response = await call_next(request)
@@ -86,6 +93,12 @@ async def value_error(request, exc):
     return JSONResponse({'detail': str(exc)}, status_code=422)
 
 
+@app.exception_handler(Exception)
+async def unexpected_error(request, exc):
+    logging.getLogger('uvicorn.error').exception('Unhandled error on %s', request.url.path, exc_info=exc)
+    return JSONResponse({'detail': f'Server error: {type(exc).__name__}: {exc}'}, status_code=500)
+
+
 def reject_agent_draft(errors: list[str]) -> None:
     run = agent_drafts.current
     if run:
@@ -95,10 +108,27 @@ def reject_agent_draft(errors: list[str]) -> None:
 
 @app.exception_handler(RequestValidationError)
 async def invalid_request(request: Request, exc: RequestValidationError):
+    if request.url.path == '/settings/credentials':
+        return JSONResponse({'detail': 'Enter an ACE username and password (one line each).'}, status_code=422)
     # Invalid shapes never enter agent_submit; they still consume a correction attempt.
     if request.url.path == '/agent/submit':
         reject_agent_draft([f"{'.'.join(map(str, error['loc']))}: {error['msg']}" for error in exc.errors()])
     return await request_validation_exception_handler(request, exc)
+
+
+@app.get('/settings/credentials')
+async def get_credentials():
+    return {**login_status(), 'restartRequired': login_restart_required}
+
+
+@app.post('/settings/credentials')
+async def post_credentials(credentials: Credentials):
+    global login_restart_required
+    save_credentials(credentials)
+    login_restart_required = True
+    # A subsequent launch must authenticate using the newly supplied credentials.
+    session.state_file.unlink(missing_ok=True)
+    return {'saved': True, 'restartRequired': True}
 
 
 @app.get('/health')

@@ -80,7 +80,7 @@ class Session:
         username = setting(f'{self.account}_USERNAME', legacy='USERNAME' if mine else '')
         password = setting(f'{self.account}_PASSWORD', legacy='PASSWORD' if mine else '')
         if not username or not password:
-            raise PortalError(f'Set {self.account}_USERNAME and {self.account}_PASSWORD in .env, or sign in in the opened ACE browser.')
+            raise PortalError('Open ACE login in the assistant to set your username and password, or sign in in the opened ACE browser.')
         user_selector = setting('ACE_USERNAME_SELECTOR') or '#txtUserID'
         pass_selector = setting('ACE_PASSWORD_SELECTOR') or '#txtPassword'
         button_selector = setting('ACE_LOGIN_SELECTOR') or '#btnLogin'

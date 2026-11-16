@@ -1,9 +1,15 @@
+// A non-JSON reply almost always means the backend is older than the frontend (route missing) or is down.
+function staleBackend(response) {
+  return `The assistant backend did not understand this request (HTTP ${response.status}). `
+    + 'It is probably running older code: close it and start it again with start.ps1, then refresh this page.';
+}
+
 export async function api(path, body) {
   const form = body instanceof FormData;
   const response = await fetch(path, {method: body === undefined ? 'GET' : 'POST',
     headers: {'X-ACE-Client':'1', ...(body !== undefined && !form ? {'Content-Type':'application/json'} : {})},
     body: body === undefined ? undefined : form ? body : JSON.stringify(body)});
-  const result = await response.json().catch(() => ({detail:'The server returned an unexpected response.'}));
+  const result = await response.json().catch(() => ({detail: staleBackend(response)}));
   if (!response.ok) throw new Error(Array.isArray(result.detail)
     ? result.detail.map(e => `${e.loc.slice(1).join('.')}: ${e.msg}`).join('\n') : result.detail || 'Request failed.');
   return result;
@@ -14,7 +20,7 @@ export async function streamEvents(path, payload, onStep, failure = 'Request fai
   const response = await fetch(path, {method:'POST',
     headers:{'X-ACE-Client':'1', 'Content-Type':'application/json'}, body:JSON.stringify(payload)});
   if (!response.ok) {
-    const result = await response.json().catch(() => ({detail:failure}));
+    const result = await response.json().catch(() => ({detail: staleBackend(response)}));
     throw new Error(Array.isArray(result.detail)
       ? result.detail.map(e => `${e.loc.slice(1).join('.')}: ${e.msg}`).join('\n') : result.detail || failure);
   }

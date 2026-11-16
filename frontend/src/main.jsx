@@ -6,6 +6,7 @@ import {agentPayload, mergeIncomingDraft, newDrafts, readStored, writeStored} fr
 import {TaskApp} from './tasks';
 import {Dashboard} from './dashboard';
 import {TicketIdeas} from './ticket-ideas';
+import {LoginSetup} from './settings';
 import './style.css';
 
 function App({modeSwitch, jump, linked, onCreateTickets}) {
@@ -576,6 +577,14 @@ function App({modeSwitch, jump, linked, onCreateTickets}) {
 const MODES = [['dashboard','Dashboard'], ['timesheet','Timesheet'], ['ideas','Ticket ideas'], ['tasks','Create tasks']];
 
 function Root() {
+  const [login, setLogin] = useState(null);
+  const [loginError, setLoginError] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const loadLogin = () => {
+    setLoginError('');
+    api('/settings/credentials').then(setLogin).catch(e => setLoginError(e.message));
+  };
+  useEffect(loadLogin, []);
   // The dashboard is the landing page every time the app opens.
   const [mode, setMode] = useState('dashboard');
   const [jump, setJump] = useState(null);
@@ -586,11 +595,18 @@ function Root() {
   const modeSwitch = <div className="switch mode-switch" role="tablist" aria-label="Workspace">
     {MODES.map(([key, label]) => <button key={key} role="tab" aria-selected={mode===key}
       className={mode===key?'selected':''} onClick={()=>setMode(key)}>{label}</button>)}
+    <button type="button" onClick={() => setSettingsOpen(true)}>ACE login</button>
   </div>;
   const fillDay = date => {setJump({date, at: Date.now()}); setMode('timesheet');};
   const draftIdeas = notes => {setIdeaNotes({notes, at: Date.now()}); setMode('tasks');};
   const createTickets = rows => {setTicketJob({rows, at: Date.now()}); setMode('tasks');};
   const ticketsLinked = (result, back) => {setLinked({...result, at: Date.now()}); if (back) setMode('timesheet');};
+  if (!login) return <main className="login-setup"><section className="panel login-card">
+    {loginError ? <><p role="alert">{loginError}</p><button onClick={loadLogin}>Retry</button></> : <p role="status">Loading ACE setup...</p>}
+  </section></main>;
+  if (!login.configured || login.restartRequired || settingsOpen) return <LoginSetup status={login}
+    onSaved={() => setLogin({...login, restartRequired: true})}
+    onCancel={login.configured && !login.restartRequired ? () => setSettingsOpen(false) : undefined}/>;
   return <>
     <div hidden={mode!=='dashboard'}><Dashboard modeSwitch={modeSwitch} onFillDay={fillDay}/></div>
     <div hidden={mode!=='timesheet'}><App modeSwitch={modeSwitch} jump={jump} linked={linked} onCreateTickets={createTickets}/></div>

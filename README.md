@@ -6,6 +6,8 @@ Local voice and text planner for the ACE daily task report. It creates editable 
 
 ## Run on Windows
 
+On first launch, enter your ACE username and password in the setup screen. Use **ACE login** in the workspace header to change them later. The app saves these locally in the ignored `.env` file as plain text; it never returns the password to the browser. After saving, restart the assistant with `start.ps1` and reload the page. The next ACE action signs in with the new credentials.
+
 From `D:\ace_portal_automation`, run:
 
 ```powershell

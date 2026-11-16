@@ -4,9 +4,13 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 FILE_ENV = dotenv_values(ROOT / '.env')
+# Login values are literal: a password may contain ${...}.
+LOGIN_ENV = dotenv_values(ROOT / '.env', interpolate=False)
 
 
 def setting(name: str, default: str = '', legacy: str = '') -> str:
+    if name in ('ACE_USERNAME', 'ACE_PASSWORD'):
+        return LOGIN_ENV.get(name) or os.environ.get(name) or (LOGIN_ENV.get(legacy) if legacy else '') or default
     # Windows defines USERNAME itself; prefer the explicit legacy .env value.
     return os.environ.get(name) or FILE_ENV.get(name) or (FILE_ENV.get(legacy) if legacy else '') or default
 
