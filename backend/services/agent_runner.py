@@ -174,9 +174,9 @@ async def run_for_day(agent: str, day: date, notes: str, on_progress, base_url: 
     exe = shutil.which(recipe.exe)
     if not exe:
         raise ProviderError(f'{recipe.label} is not installed or not on PATH. Pick another agent.')
-    timeout = timeout if timeout is not None else float(setting('AGENT_TIMEOUT_SECONDS', '180'))
-    startup_timeout = float(setting('AGENT_STARTUP_TIMEOUT_SECONDS', '60'))
-    idle_timeout = float(setting('AGENT_IDLE_TIMEOUT_SECONDS', '90'))
+    timeout = timeout if timeout is not None else float(setting('AGENT_TIMEOUT_SECONDS', '1800'))
+    startup_timeout = float(setting('AGENT_STARTUP_TIMEOUT_SECONDS', '900'))
+    idle_timeout = float(setting('AGENT_IDLE_TIMEOUT_SECONDS', '900'))
     if agent == 'antigravity':
         write_agy_hooks()
     if agent == 'antigravity' and not antigravity_read_only():

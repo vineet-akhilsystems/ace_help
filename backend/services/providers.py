@@ -94,7 +94,7 @@ def _run_agent_sync(agent: str, prompt: str, schema: dict) -> dict:
                            '--disable', 'shell_tool', '-c', 'approval_policy="never"', '-C', folder,
                            '--output-schema', schema_file, '-o', answer_file, '-'], prompt
         res = subprocess.run(args, input=stdin, capture_output=True, text=True, encoding='utf-8', errors='replace',
-                             timeout=float(setting('AGENT_TIMEOUT_SECONDS', '180')), check=False, cwd=folder)
+                             timeout=float(setting('AGENT_TIMEOUT_SECONDS', '1800')), check=False, cwd=folder)
         if res.returncode != 0:
             raise ProviderError(f'{label} could not draft the tasks. Please retry or pick another agent.')
         if agent == 'codex':
